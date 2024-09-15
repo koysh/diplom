@@ -1,0 +1,6 @@
+flask
+transformers
+torch
+pdfminer.six
+python-docx
+speechrecognition

@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Главная</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body>
+    <header>
+        <h1>Ваш AI помощник</h1>
+        <a href="{{ url_for('logout') }}">Выход</a>
+    </header>
+    <main>
+        <div id="file-upload">
+            <h2>Загрузка файлов</h2>
+            <form method="post" enctype="multipart/form-data">
+                <input type="file" name="file">
+                <button type="submit">Загрузить</button>
+            </form>
+        </div>
+        <div id="chat">
+            <h2>Чат с ИИ</h2>
+            <div id="chat-box">
+                <ul>
+                    <!-- Сообщения чата будут добавляться здесь -->
+                </ul>
+            </div>
+            <form id="chat-form" method="post">
+                <input type="text" name="message" placeholder="Ваше сообщение..." required>
+                <button type="submit">Отправить</button>
+            </form>
+        </div>
+        <div id="past-dialogs">
+            <h2>История диалогов</h2>
+            <ul>
+                <!-- История диалогов будет добавляться здесь -->
+            </ul>
+        </div>
+    </main>
+    <script src="{{ url_for('static', filename='js/scripts.js') }}"></script>
+</body>
+</html>
