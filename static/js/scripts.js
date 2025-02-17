@@ -80,8 +80,12 @@ document.addEventListener("DOMContentLoaded", () => {
         messages.scrollTop = messages.scrollHeight;
     };
     
+    
 });
 
 function logout() {
-    alert("Выход из системы...");
+    localStorage.removeItem("authToken");
+
+    window.location.href = "/login";
 }
+
