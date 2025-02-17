@@ -8,33 +8,31 @@
 </head>
 <body>
     <header>
-        <h1>Ваш AI помощник</h1>
-        <a href="{{ url_for('logout') }}">Выход</a>
+        <h1>Добро пожаловать!</h1>
+        <a href="{{ url_for('logout') }}">Выйти</a>
     </header>
     <main>
         <div id="file-upload">
-            <h2>Загрузка файлов</h2>
-            <form method="post" enctype="multipart/form-data">
-                <input type="file" name="file">
+            <h2>Загрузите файл</h2>
+            <form action="{{ url_for('upload_file') }}" method="post" enctype="multipart/form-data">
+                <input type="file" name="file" required>
                 <button type="submit">Загрузить</button>
             </form>
         </div>
         <div id="chat">
             <h2>Чат с ИИ</h2>
             <div id="chat-box">
-                <ul>
-                    <!-- Сообщения чата будут добавляться здесь -->
-                </ul>
+                <!-- Chat messages will be displayed here -->
             </div>
-            <form id="chat-form" method="post">
-                <input type="text" name="message" placeholder="Ваше сообщение..." required>
+            <form id="chat-form" action="#" method="post">
+                <input type="text" name="message" placeholder="Введите сообщение" required>
                 <button type="submit">Отправить</button>
             </form>
         </div>
         <div id="past-dialogs">
             <h2>История диалогов</h2>
             <ul>
-                <!-- История диалогов будет добавляться здесь -->
+                <!-- List of past dialogs will be displayed here -->
             </ul>
         </div>
     </main>

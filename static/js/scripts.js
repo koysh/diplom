@@ -1,36 +1,87 @@
-document.addEventListener('DOMContentLoaded', function() {
-    const chatForm = document.getElementById('chat-form');
-    const chatBox = document.getElementById('messages');
+document.addEventListener("DOMContentLoaded", () => {
+    const form = document.getElementById("chat-form");
+    const messages = document.getElementById("chat-messages");
+    const fileInput = document.getElementById("fileInput");
 
-    chatForm.addEventListener('submit', function(e) {
+    form.onsubmit = async (e) => {
         e.preventDefault();
+        const input = document.getElementById("user-input");
+        const userMessage = input.value.trim();
 
-        const userInput = document.getElementById('user-input').value;
-        if (userInput.trim() === "") return;
+        if (userMessage) {
+            messages.innerHTML += `<p><strong>Вы:</strong> ${userMessage}</p>`;
 
-        // Добавляем сообщение пользователя в чат
-        const userMessage = document.createElement('li');
-        userMessage.className = 'user-message';
-        userMessage.textContent = userInput;
-        chatBox.appendChild(userMessage);
+            const response = await fetch("/ask", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ question: userMessage }),
+            });
 
-        // Отправляем запрос на сервер для ответа ИИ
-        fetch('/ask_ai', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ question: userInput }),
-        })
-        .then(response => response.json())
-        .then(data => {
-            // Добавляем ответ ИИ в чат
-            const aiMessage = document.createElement('li');
-            aiMessage.className = 'ai-message';
-            aiMessage.textContent = data.answer;
-            chatBox.appendChild(aiMessage);
-        });
+            const data = await response.json();
+            messages.innerHTML += `<p><strong>AI:</strong> ${data.response}</p>`;
+            input.value = "";
+            messages.scrollTop = messages.scrollHeight;
+        }
+    };
 
-        document.getElementById('user-input').value = '';
-    });
+    fileInput.onchange = async () => {
+        const file = fileInput.files[0];
+        if (file) {
+            const formData = new FormData();
+            formData.append("file", file);
+
+            const response = await fetch("/upload", {
+                method: "POST",
+                body: formData,
+            });
+
+            const data = await response.json();
+            messages.innerHTML += `<p><strong>AI:</strong> ${data.message}</p>`;
+        }
+    };
+
+    document.getElementById("chat-form").onsubmit = async (e) => {
+        e.preventDefault(); 
+    
+        const input = document.getElementById("user-input");
+        const userMessage = input.value.trim();
+        if (!userMessage) return;
+    
+        const messages = document.getElementById("chat-messages");
+        const userMessageElem = document.createElement("p");
+        userMessageElem.innerHTML = `<strong>Вы:</strong> ${userMessage}`;
+        messages.appendChild(userMessageElem);
+    
+        const formData = new FormData();
+        formData.append("question", userMessage);
+    
+        try {
+            const response = await fetch("/ask", {
+                method: "POST",
+                body: formData, 
+            });
+    
+            if (response.ok) {
+                const data = await response.json();
+                const aiMessageElem = document.createElement("p");
+                aiMessageElem.innerHTML = `<strong>AI:</strong> ${data.response}`;
+                messages.appendChild(aiMessageElem);
+            } else {
+                throw new Error("Ошибка ответа сервера");
+            }
+        } catch (error) {
+            console.error(error);
+            const errorElem = document.createElement("p");
+            errorElem.innerHTML = `<strong>AI:</strong> Произошла ошибка`;
+            messages.appendChild(errorElem);
+        }
+    
+        input.value = "";
+        messages.scrollTop = messages.scrollHeight;
+    };
+    
 });
+
+function logout() {
+    alert("Выход из системы...");
+}

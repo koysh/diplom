@@ -1,66 +1,82 @@
-from flask import Flask, render_template, request, redirect, url_for, session
-from flask_sqlalchemy import SQLAlchemy
-import openai
-import os
-from dotenv import load_dotenv
-from extensions import db
-from config import Config
+from fastapi import FastAPI, Form, Depends, HTTPException, UploadFile, File
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
+from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+from database import get_db, init_db
+from models import User
+from pydantic import BaseModel
+from typing import Optional
+from pathlib import Path
+import shutil
 
-# Загрузка переменных окружения
-load_dotenv()
+app = FastAPI()
 
-# Инициализация приложения Flask
-app = Flask(__name__)
-app.config.from_object(Config)  # Используйте конфигурацию из config.py
-app.config['SECRET_KEY'] = os.getenv('SECRET_KEY')
-db = SQLAlchemy(app)
+# Подключение CORS (для работы с JS)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-from flask_migrate import Migrate
+# Подключаем папки со статикой и шаблонами
+app.mount("/static", StaticFiles(directory="static"), name="static")
+templates = Jinja2Templates(directory="templates")
 
-# Инициализация миграций
-migrate = Migrate(app, db)
-# Импорт моделей
-from models import User, Dialog  
+UPLOAD_DIR = Path("uploads")
+UPLOAD_DIR.mkdir(exist_ok=True)
 
-# Обработка главной страницы
-@app.route('/')
-def index():
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
-    return render_template('index.html')
+class LoginRequest(BaseModel):
+    username: str
+    password: str
 
-# Обработка страницы регистрации
-@app.route('/register', methods=['GET', 'POST'])
-def register():
-    if request.method == 'POST':
-        username = request.form['username']
-        password = request.form['password']
+class QuestionRequest(BaseModel):
+    question: str
+
+@app.get("/", response_class=HTMLResponse)
+async def home():
+    return templates.TemplateResponse("dashbord.html", {"request": {}})
+
+@app.post("/login")
+async def login(request: LoginRequest, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.username == request.username).first()
+    if not user or user.password != request.password:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    return {"message": "Login successful"}
+
+@app.post("/register")
+async def register(username: str = Form(...), password: str = Form(...), db: Session = Depends(get_db)):
+    try:
         new_user = User(username=username, password=password)
-        db.session.add(new_user)
-        db.session.commit()
-        return redirect(url_for('login'))
-    return render_template('register.html')
+        db.add(new_user)
+        db.commit()
+        return {"message": "User registered successfully"}
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="Username already exists")
 
-# Обработка страницы авторизации
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    if request.method == 'POST':
-        username = request.form['username']
-        password = request.form['password']
-        user = User.query.filter_by(username=username, password=password).first()
-        if user:
-            session['user_id'] = user.id
-            return redirect(url_for('index'))
-        else:
-            return 'Неверный логин или пароль'
-    return render_template('login.html')
+@app.post("/ask")
+async def ask_question(question: str = Form(...)):  
+    if not question:
+        raise HTTPException(status_code=400, detail="Вопрос не может быть пустым")
 
-# Обработка выхода из системы
-@app.route('/logout')
-def logout():
-    session.pop('user_id', None)
-    return redirect(url_for('login'))
+    response_text = f"Вы спросили: {question}"
 
-# Запуск приложения
-if __name__ == '__main__':
-    app.run(debug=True)
+    return {"response": response_text}
+
+@app.post("/upload")
+async def upload_file(file: UploadFile = File(...)):
+    file_location = UPLOAD_DIR / file.filename
+    with file_location.open("wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+    
+    return {"message": f"Файл {file.filename} загружен и обработан"}
+
+if __name__ == "__main__":
+    init_db()
+    import uvicorn
+    uvicorn.run(app, host="127.0.0.1", port=8000)
