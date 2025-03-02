@@ -1,20 +1,21 @@
-from fastapi import FastAPI, Form, Depends, HTTPException, UploadFile, File
+from fastapi import FastAPI, Form, Depends, HTTPException, UploadFile, File, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse
+from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+from pathlib import Path
 from database import get_db, init_db
 from models import User
 from pydantic import BaseModel
-from typing import Optional
-from pathlib import Path
-import shutil
+from utils.audio_handler import recognize_speech_from_audio
+from utils.docx_handler import extract_text_from_docx
+from utils.pdf_handler import extract_pdf_text
 
 app = FastAPI()
 
-# Подключение CORS (для работы с JS)
+# CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -23,7 +24,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Подключаем папки со статикой и шаблонами
+# Подключение статических файлов и шаблонов
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
@@ -34,47 +35,33 @@ class LoginRequest(BaseModel):
     username: str
     password: str
 
-class QuestionRequest(BaseModel):
-    question: str
-
-@app.get("/", response_class=HTMLResponse)
-async def home():
-    return templates.TemplateResponse("dashbord.html", {"request": {}})
+@app.get("/")
+async def home(request: Request):
+    return templates.TemplateResponse("login.html", {"request": request})
 
 @app.post("/login")
 async def login(request: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.username == request.username).first()
-    if not user or user.password != request.password:
-        raise HTTPException(status_code=401, detail="Invalid credentials")
-    return {"message": "Login successful"}
+    if not user or not verify_password(request.password, user.password_hash):
+        raise HTTPException(status_code=401, detail="Неверные учетные данные")
+    return {"message": "Успешный вход"}
 
-@app.post("/register")
-async def register(username: str = Form(...), password: str = Form(...), db: Session = Depends(get_db)):
-    try:
-        new_user = User(username=username, password=password)
-        db.add(new_user)
-        db.commit()
-        return {"message": "User registered successfully"}
-    except IntegrityError:
-        db.rollback()
-        raise HTTPException(status_code=400, detail="Username already exists")
+# @app.post("/upload")
+# async def upload_file(file: UploadFile = File(...)):
+#     file_type = file.filename.split(".")[-1].lower()
+#     allowed_extensions = {"pdf", "docx", "wav", "mp3", "ogg"}
 
-@app.post("/ask")
-async def ask_question(question: str = Form(...)):  
-    if not question:
-        raise HTTPException(status_code=400, detail="Вопрос не может быть пустым")
+#     if file_type not in allowed_extensions:
+#         raise HTTPException(status_code=400, detail="Неподдерживаемый формат")
 
-    response_text = f"Вы спросили: {question}"
+#     if file_type == "pdf":
+#         text = extract_pdf_text(file)
+#     elif file_type == "docx":
+#         text = extract_text_from_docx(file)
+#     elif file_type in {"wav", "mp3", "ogg"}:
+#         text = recognize_speech_from_audio(file)
 
-    return {"response": response_text}
-
-@app.post("/upload")
-async def upload_file(file: UploadFile = File(...)):
-    file_location = UPLOAD_DIR / file.filename
-    with file_location.open("wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-    
-    return {"message": f"Файл {file.filename} загружен и обработан"}
+#     return {"filename": file.filename, "extracted_text": text}
 
 if __name__ == "__main__":
     init_db()
