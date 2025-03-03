@@ -5,19 +5,44 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import create_engine, Column, Integer, String
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
+from sentence_transformers import SentenceTransformer
 import os
 import openai
 from dotenv import load_dotenv
 from utils.docx_handler import extract_text_from_docx
 from utils.pdf_handler import extract_text_from_pdf
 import logging
+import pinecone
+from pinecone import Pinecone, ServerlessSpec
+import uuid
+
+# Загрузка переменных окружения
+load_dotenv()
+
+# Инициализация Pinecone
+pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
+
+# Создание индекса, если он еще не существует
+index_name = "dialogues"
+if index_name not in pc.list_indexes().names():
+    pc.create_index(
+        name=index_name, 
+        dimension=768,  # Укажите размерность векторов
+        metric='euclidean',  # Выберите метрику
+        spec=ServerlessSpec(
+            cloud='aws',
+            region='us-east-1'  # Убедитесь, что вы используете правильный регион
+        )
+    )
+
+# Подключение к индексу
+index = pc.Index(index_name)
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Загрузка переменных окружения
-load_dotenv()
+# Установка API ключа для OpenAI
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
 # Настройка базы данных
@@ -44,6 +69,38 @@ templates = Jinja2Templates(directory="templates")
 # Подключение статических файлов
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
+# Инициализация модели для преобразования текста в векторы
+model = SentenceTransformer('all-mpnet-base-v2')  # Эта модель возвращает векторы размерностью 768
+def get_vector(text):
+    if not text:
+        return []  # Возвращаем пустой список, если текст пуст
+    vector = model.encode(text).tolist()  # Преобразуем вектор в список
+    return vector
+
+def save_dialogue(user_message, ai_message):
+    # Создание векторов для сообщений
+    user_vector = get_vector(user_message)  # Получение вектора из сообщения пользователя
+    ai_vector = get_vector(ai_message)      # Получение вектора из сообщения ИИ
+
+    # Проверка, что векторы не пустые
+    if not user_vector or not ai_vector:
+        logger.error("Не удалось создать векторы для сохранения в Pinecone.")
+        return  # Или выбросьте исключение, если это критично
+
+    # Сохранение векторов в Pinecone
+    index.upsert([
+        (f"user-{uuid.uuid4()}", user_vector, {"message": user_message}),  # Уникальный идентификатор для сообщения пользователя
+        (f"ai-{uuid.uuid4()}", ai_vector, {"message": ai_message})         # Уникальный идентификатор для сообщения ИИ
+    ])
+
+def retrieve_dialogues(query, top_k=5):
+    # Получение вектора для запроса
+    query_vector = get_vector(query)
+
+    # Извлечение наиболее похожих диалогов
+    results = index.query(query_vector, top_k=top_k, include_values=True, include_metadata=True)
+    return results
+
 # Функция подключения к БД
 def get_db():
     db = SessionLocal()
@@ -53,7 +110,7 @@ def get_db():
         db.close()
 
 # Регистрация пользователя (БЕЗ ХЭШИРОВАНИЯ)
-@app.post("/register")
+@app.post("/register ")
 async def register(username: str = Form(...), password: str = Form(...), db: Session = Depends(get_db)):
     if db.query(User).filter(User.username == username).first():
         raise HTTPException(status_code=400, detail="Пользователь уже существует")
@@ -138,11 +195,15 @@ async def ask(request: Request):
 
         # Получаем ответ от ИИ
         ai_message = response.choices[0].message.content
+
+        # Сохранение диалога в Pinecone
+        save_dialogue(messages[-1]['content'], ai_message)
+
         return {"response": ai_message}
     except Exception as e:
         logger.error(f"Ошибка при запросе к OpenAI: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Ошибка: {str(e)}")
-
+        
 @app.get("/")
 async def read_root(request: Request):
     return templates.TemplateResponse("login.html", {"request": request})
