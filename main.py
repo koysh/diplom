@@ -109,6 +109,10 @@ def get_db():
     finally:
         db.close()
 
+@app.get("/logout")
+async def logout():
+    return RedirectResponse(url="/login")
+
 # Регистрация пользователя (БЕЗ ХЭШИРОВАНИЯ)
 @app.post("/register ")
 async def register(username: str = Form(...), password: str = Form(...), db: Session = Depends(get_db)):
@@ -137,6 +141,10 @@ async def get_login(request: Request):
 @app.get("/dashboard")
 async def dashboard(request: Request):
     return templates.TemplateResponse("dashboard.html", {"request": request})
+
+@app.get("/register")
+async def get_register(request: Request):
+    return templates.TemplateResponse("register.html", {"request": request})
 
 @app.post("/upload")
 async def upload_file(file: UploadFile = File(...)):

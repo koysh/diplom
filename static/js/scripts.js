@@ -5,9 +5,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
   let messagesArray = []; // Массив для хранения сообщений
 
+  
   function scrollToBottom() {
     messages.scrollTop = messages.scrollHeight;
   }
+
 
   form.onsubmit = async (e) => {
     e.preventDefault();
